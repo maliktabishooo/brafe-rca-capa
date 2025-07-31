@@ -1,22 +1,4 @@
-It looks like you've provided a complete and detailed Streamlit application, but there are a few issues that would prevent it from running correctly, especially in a Streamlit Community Cloud environment with a private repository.
 
-Here's a breakdown of the problems and a corrected, compliant version of the code.
-
-### **Primary Issues Found**
-
-1.  **Hardcoded GitHub Token:** The code has a hardcoded GitHub token `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` and repository information `maliktabishooo/brafe-rca-capa`. This is a major security risk. It's also trying to read these from `os.environ.get()` which is the correct approach, but the hardcoded values would override this, making it impossible for someone else to use the app with their own private repo.
-
-2.  **Missing `os` import:** The `@st.cache_resource` block tries to use `os`, but the `import os` statement is inside the function. Imports should always be at the top of the file.
-
-3.  **Local File Paths in Docker/Containerized Environment:** The code relies on creating temporary local files for the Pareto chart (`temp_pareto_...png`) and signatures (`temp_sig_...png`). This can be unreliable in a containerized environment like Streamlit Community Cloud, where the filesystem might be read-only or reset between runs. A more robust approach is to handle these files in memory using `io.BytesIO`.
-
-4.  **`secrets.toml` vs. `os.environ`:** The setup instructions mention using `.streamlit/secrets.toml` for credentials, which is the correct method for Streamlit Community Cloud. However, the code itself is trying to read from `os.environ.get()`, which is typically used for platforms like Render or Heroku. The code needs to be updated to read from `st.secrets` instead.
-
-### **Revised `app.py` for Streamlit Cloud**
-
-This corrected version addresses all the issues above. It uses `st.secrets` for security, moves the import, and switches to an in-memory approach for temporary images to ensure it runs smoothly in the Streamlit Cloud environment.
-
-```python
 import streamlit as st
 from streamlit_option_menu import option_menu
 from streamlit_drawable_canvas import st_canvas
