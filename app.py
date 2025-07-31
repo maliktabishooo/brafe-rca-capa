@@ -18,9 +18,11 @@ if 'capa_records' not in st.session_state:
 if 'car_counter' not in st.session_state:
     st.session_state.car_counter = 1
 
-# PDF Generator
+# PDF Generator with Brafe Logo
 class PDF(FPDF):
     def header(self):
+        # Add Brafe logo (assuming it's saved as 'brafe_logo.png' in the same directory)
+        self.image('brafe_logo.png', 10, 8, 30)
         self.set_font('Arial', 'B', 12)
         self.cell(0, 10, 'Brafe Engineering RCA/CAPA Report', 0, 1, 'C')
     
@@ -33,12 +35,14 @@ def generate_pdf(rca_data, capa_data):
     pdf = PDF()
     pdf.add_page()
     
-    # Add title
+    # Title
     pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, f'CAR Report: {capa_data["car_number"]}', 0, 1, 'L')
     pdf.ln(5)
     
-    # Report details
+    # Report Details
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, 'Report Details', 0, 1, 'L')
     pdf.set_font('Arial', '', 12)
     pdf.cell(40, 10, 'Generated Date:', 0, 0)
     pdf.cell(0, 10, datetime.now().strftime("%Y-%m-%d %H:%M"), 0, 1)
@@ -46,25 +50,32 @@ def generate_pdf(rca_data, capa_data):
     pdf.cell(0, 10, rca_data['generated_by'], 0, 1)
     pdf.cell(40, 10, 'Record Type:', 0, 0)
     pdf.cell(0, 10, rca_data['record_type'], 0, 1)
-    
     if rca_data['record_type'] == 'Customer':
         pdf.cell(40, 10, 'Customer Name:', 0, 0)
         pdf.cell(0, 10, rca_data['customer_name'], 0, 1)
-    
     pdf.ln(10)
     
     # RCA Details
     pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, 'Root Cause Analysis', 0, 1)
+    pdf.cell(0, 10, 'Root Cause Analysis', 0, 1, 'L')
     pdf.set_font('Arial', '', 12)
     pdf.multi_cell(0, 8, f"Problem Description: {rca_data['problem_description']}")
     pdf.ln(5)
     pdf.multi_cell(0, 8, f"Analysis: {rca_data['analysis']}")
     pdf.ln(5)
     
+    # 5 Whys (if provided)
+    if 'five_whys' in rca_data and rca_data['five_whys']:
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, '5 Whys', 0, 1, 'L')
+        pdf.set_font('Arial', '', 12)
+        for i, why in enumerate(rca_data['five_whys'], 1):
+            pdf.cell(0, 10, f"Why {i}: {why}", 0, 1)
+        pdf.ln(5)
+    
     # CAPA Details
     pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, 'Corrective/Preventive Actions', 0, 1)
+    pdf.cell(0, 10, 'Corrective/Preventive Actions', 0, 1, 'L')
     pdf.set_font('Arial', '', 12)
     pdf.cell(60, 10, 'Corrective Action:', 0, 0)
     pdf.multi_cell(0, 8, capa_data['corrective_action'])
@@ -83,7 +94,7 @@ def generate_pdf(rca_data, capa_data):
     # Images
     if rca_data['images']:
         pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, 'Evidence Photos', 0, 1)
+        pdf.cell(0, 10, 'Evidence Photos', 0, 1, 'L')
         
         for idx, img_data in enumerate(rca_data['images']):
             try:
@@ -228,6 +239,14 @@ elif selected == "Create RCA":
         problem_description = st.text_area("Problem Description", height=150)
         analysis = st.text_area("Root Cause Analysis", height=200)
         
+        # 5 Whys (Optional)
+        st.subheader("5 Whys (Optional)")
+        why1 = st.text_input("Why 1")
+        why2 = st.text_input("Why 2")
+        why3 = st.text_input("Why 3")
+        why4 = st.text_input("Why 4")
+        why5 = st.text_input("Why 5")
+        
         # Reference Information
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -259,12 +278,14 @@ elif selected == "Create RCA":
                         image_data.append(f"data:{img.type};base64,{img_base64}")
                 
                 # Create RCA record
+                five_whys = [why for why in [why1, why2, why3, why4, why5] if why]
                 rca_record = {
                     "id": f"RCA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                     "record_type": record_type,
                     "customer_name": customer_name,
                     "problem_description": problem_description,
                     "analysis": analysis,
+                    "five_whys": five_whys,
                     "po_number": po_number,
                     "work_order": work_order,
                     "generated_by": generated_by,
