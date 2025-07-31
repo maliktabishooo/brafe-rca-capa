@@ -85,12 +85,23 @@ def init_session_state():
             st.session_state[key] = value
 
 # --- GITHUB INTEGRATION ---
+import os # Make sure this is at the top of your file
+
 @st.cache_resource
 def get_github_repo():
     """Returns a connection to the GitHub repository."""
     try:
-        g = Github(st.secrets["GITHUB_TOKEN"])
-        repo = g.get_repo(f"{st.secrets['GITHUB_USER']}/{st.secrets['GITHUB_REPO']}")
+        # Read credentials from environment variables on Render
+        token = os.environ.get("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")
+        user = os.environ.get("maliktabishooo")
+        repo_name = os.environ.get("brafe-rca-capa")
+
+        if not all([token, user, repo_name]):
+            st.sidebar.error("GitHub credentials not found in environment variables.")
+            return None
+            
+        g = Github(token)
+        repo = g.get_repo(f"{user}/{repo_name}")
         return repo
     except Exception as e:
         st.sidebar.error(f"GitHub connection failed: {e}")
