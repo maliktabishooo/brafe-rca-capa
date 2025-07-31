@@ -1,0 +1,7 @@
+streamlit
+pandas
+numpy
+fpdf
+Pillow
+pygithub
+streamlit-option-menu
