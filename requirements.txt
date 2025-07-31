@@ -1,7 +1,10 @@
+# requirements.txt
 streamlit
-pandas
-numpy
-fpdf
-Pillow
-pygithub
 streamlit-option-menu
+pandas
+fpdf2
+Pillow
+PyGithub
+streamlit-drawable-canvas
+matplotlib
+plotly
