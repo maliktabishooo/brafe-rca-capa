@@ -1,11 +1,8 @@
-# requirements.txt
-streamlit
-streamlit-option-menu
-pandas
-fpdf2
-Pillow
-PyGithub
-streamlit-drawable-canvas
-matplotlib
-plotly
-streamlit-lottie
+streamlit>=1.38.0
+pandas>=2.2.2
+PyGithub>=2.4.0
+python-docx>=1.1.2
+plotly>=5.24.1
+matplotlib>=3.9.2
+streamlit-option-menu>=0.3.12
+streamlit-drawable-canvas>=0.9.3
