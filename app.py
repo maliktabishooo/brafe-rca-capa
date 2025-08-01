@@ -10,6 +10,8 @@ from fpdf import FPDF
 from streamlit_option_menu import option_menu
 import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
+from PIL import Image
+import numpy as np
 
 # --- SESSION STATE INITIALIZATION ---
 def init_session_state():
@@ -43,25 +45,17 @@ def get_github_repo():
 def load_data_from_github():
     """Loads RCA and CAPA data from GitHub repository."""
     repo = get_github_repo()
-    if not repo:
-        st.warning("GitHub repository not connected. Starting with empty data.")
-        st.session_state.rca_records = []
-        st.session_state.capa_records = []
-        st.session_state.car_counter = 1
-        st.session_state.data_loaded = True
-        return
-    try:
+    if repo:
         # Load RCA data
         try:
             contents = repo.get_contents("rca_data.csv")
             rca_data = base64.b64decode(contents.content).decode('utf-8')
             st.session_state.rca_records = pd.read_csv(io.StringIO(rca_data)).to_dict('records')
-            st.write(f"Loaded {len(st.session_state.rca_records)} RCA records.")
         except GithubException as e:
             if e.status == 404:
                 st.warning("'rca_data.csv' not found. Starting fresh.")
             else:
-                st.error(f"GitHub error loading rca_data.csv: {e}")
+                st.error(f"Error loading rca_data.csv: {e}")
             st.session_state.rca_records = []
         except Exception as e:
             st.error(f"Unexpected error loading rca_data.csv: {e}")
@@ -72,7 +66,6 @@ def load_data_from_github():
             contents = repo.get_contents("capa_data.csv")
             capa_data = base64.b64decode(contents.content).decode('utf-8')
             st.session_state.capa_records = pd.read_csv(io.StringIO(capa_data)).to_dict('records')
-            st.write(f"Loaded {len(st.session_state.capa_records)} CAPA records.")
             # Find the highest car_number for the current year
             if st.session_state.capa_records:
                 current_year = datetime.now().year
@@ -87,17 +80,19 @@ def load_data_from_github():
             if e.status == 404:
                 st.warning("'capa_data.csv' not found. Starting fresh.")
             else:
-                st.error(f"GitHub error loading capa_data.csv: {e}")
+                st.error(f"Error loading capa_data.csv: {e}")
             st.session_state.capa_records = []
             st.session_state.car_counter = 1
         except Exception as e:
             st.error(f"Unexpected error loading capa_data.csv: {e}")
             st.session_state.capa_records = []
             st.session_state.car_counter = 1
-    except Exception as e:
-        st.error(f"Unexpected error during data loading: {e}")
-    finally:
-        st.session_state.data_loaded = True
+    else:
+        st.warning("GitHub repository not connected. Cannot load data.")
+        st.session_state.rca_records = []
+        st.session_state.capa_records = []
+        st.session_state.car_counter = 1
+    st.session_state.data_loaded = True
 
 def save_data_to_github():
     """Saves RCA and CAPA dataframes as CSVs to the GitHub repository."""
@@ -129,11 +124,7 @@ def save_data_to_github():
 class PDF(FPDF):
     """Custom FPDF class for generating the report with custom header and footer."""
     def header(self):
-        try:
-            self.image('brafe-logo.png', 10, 8, 40)
-        except Exception as e:
-            self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f"Logo not found: {e}", 0, 1, 'L')
+        self.image('brafe-logo.png', 10, 8, 40)
         self.set_font('Arial', 'B', 15)
         self.cell(80)
         self.cell(30, 10, 'Corrective Action Report (CAR)', 0, 0, 'C')
@@ -219,15 +210,19 @@ def generate_pdf(rca_data, capa_data):
             pdf.set_y(sig_y_pos)
             pdf.set_x(x_pos)
             pdf.cell(80, 5, label, 0, 2, 'C')
-            if sig_data and isinstance(sig_data, str) and sig_data.startswith('data:image'):
+            if sig_data is not None:  # Check if sig_data exists
                 try:
-                    parts = sig_data.split(',')
-                    if len(parts) > 1:
-                        img_bytes = base64.b64decode(parts[1])
-                        img_stream = io.BytesIO(img_bytes)
+                    # Convert NumPy array to PIL Image and save as PNG
+                    if isinstance(sig_data, np.ndarray):
+                        img = Image.fromarray(sig_data, 'RGBA')
+                        img_stream = io.BytesIO()
+                        img.save(img_stream, format='PNG')
+                        img_stream.seek(0)
                         pdf.image(img_stream, x=x_pos + 15, y=sig_y_pos + 8, w=50)
+                    else:
+                        raise ValueError("Signature data is not a NumPy array")
                 except Exception as e:
-                    st.warning(f"Error processing signature for '{label}': {e}")
+                    print(f"Error processing signature for '{label}': {e}")
                     pdf.set_y(sig_y_pos + 15)
                     pdf.set_x(x_pos)
                     pdf.set_font('Arial', 'I', 9)
@@ -257,10 +252,10 @@ def generate_pdf(rca_data, capa_data):
                     pdf.ln(5)
                 except Exception as e:
                     pdf.cell(0, 10, f"Error processing image: {e}", 0, 1)
-        return pdf.output(dest='S').encode('latin1')
+        return pdf.output(dest='S')  # Return bytearray directly
     except Exception as e:
         error_message = f"An unexpected error occurred during PDF generation: {e}"
-        st.error(error_message)
+        print(error_message)
         return {"error": error_message}
 
 # --- UI RENDERING FUNCTIONS ---
@@ -369,13 +364,10 @@ def render_create_rca():
                 st.error("Problem Description is required!")
             else:
                 image_data = []
-                for img in images or []:
-                    try:
-                        img_bytes = img.getvalue()
-                        img_base64 = base64.b64encode(img_bytes).decode()
-                        image_data.append(f"data:{img.type};base64,{img_base64}")
-                    except Exception as e:
-                        st.warning(f"Error processing image: {e}")
+                for img in images:
+                    img_bytes = img.getvalue()
+                    img_base64 = base64.b64encode(img_bytes).decode()
+                    image_data.append(f"data:{img.type};base64,{img_base64}")
                 rca_record = {
                     "id": f"RCA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                     "record_type": record_type,
@@ -390,27 +382,24 @@ def render_create_rca():
                     "images": image_data
                 }
                 if technique == 'Pareto Analysis' and technique_details.get('pareto'):
-                    try:
-                        df = pd.DataFrame(technique_details['pareto']).sort_values('frequency', ascending=False)
-                        df['cumulative_percentage'] = (df['frequency'].cumsum() / df['frequency'].sum()) * 100
-                        fig, ax1 = plt.subplots()
-                        ax1.bar(df['cause'], df['frequency'], color='C0')
-                        ax1.set_ylabel('Frequency', color='C0')
-                        ax1.tick_params(axis='y', labelcolor='C0')
-                        ax1.tick_params(axis='x', rotation=45)
-                        ax2 = ax1.twinx()
-                        ax2.plot(df['cause'], df['cumulative_percentage'], color='C1', marker='o', ms=5)
-                        ax2.set_ylabel('Cumulative Percentage', color='C1')
-                        ax2.tick_params(axis='y', labelcolor='C1')
-                        ax2.set_ylim([0, 110])
-                        plt.title('Pareto Analysis')
-                        fig.tight_layout()
-                        buf = io.BytesIO()
-                        fig.savefig(buf, format='png')
-                        plt.close(fig)
-                        rca_record['pareto_chart'] = buf
-                    except Exception as e:
-                        st.warning(f"Error generating Pareto chart: {e}")
+                    df = pd.DataFrame(technique_details['pareto']).sort_values('frequency', ascending=False)
+                    df['cumulative_percentage'] = (df['frequency'].cumsum() / df['frequency'].sum()) * 100
+                    fig, ax1 = plt.subplots()
+                    ax1.bar(df['cause'], df['frequency'], color='C0')
+                    ax1.set_ylabel('Frequency', color='C0')
+                    ax1.tick_params(axis='y', labelcolor='C0')
+                    ax1.tick_params(axis='x', rotation=45)
+                    ax2 = ax1.twinx()
+                    ax2.plot(df['cause'], df['cumulative_percentage'], color='C1', marker='o', ms=5)
+                    ax2.set_ylabel('Cumulative Percentage', color='C1')
+                    ax2.tick_params(axis='y', labelcolor='C1')
+                    ax2.set_ylim([0, 110])
+                    plt.title('Pareto Analysis')
+                    fig.tight_layout()
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format='png')
+                    plt.close(fig)
+                    rca_record['pareto_chart'] = buf
                 st.session_state.rca_records.append(rca_record)
                 with st.spinner("Saving RCA record..."):
                     time.sleep(1)
@@ -488,15 +477,8 @@ def render_create_capa():
                 if not corrective_action or not preventive_action or not responsible:
                     st.error("Corrective/Preventive Actions and Responsible Person are required!")
                 else:
-                    responsible_sig_data = None
-                    approver_sig_data = None
-                    try:
-                        if responsible_sig.image_data is not None:
-                            responsible_sig_data = f"data:image/png;base64,{base64.b64encode(responsible_sig.image_data).decode()}"
-                        if approver_sig.image_data is not None:
-                            approver_sig_data = f"data:image/png;base64,{base64.b64encode(approver_sig.image_data).decode()}"
-                    except Exception as e:
-                        st.warning(f"Error processing signatures: {e}")
+                    responsible_sig_data = responsible_sig.image_data if hasattr(responsible_sig, 'image_data') else None
+                    approver_sig_data = approver_sig.image_data if hasattr(approver_sig, 'image_data') else None
                     capa_record = {
                         "id": f"CAPA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                         "rca_id": selected_rca_id,
@@ -574,9 +556,9 @@ def render_settings():
     with c1:
         if st.button("💾 Save All Data to GitHub", use_container_width=True, key="save_github"):
             with st.spinner("Saving to GitHub..."):
-                if save_data_to_github():
-                    time.sleep(1)
-                    st.success("Data saved successfully!")
+                save_data_to_github()
+                time.sleep(1)
+            st.success("Data saved successfully!")
     with c2:
         if st.button("⚠️ Reset All Local Data", type="primary", use_container_width=True, key="reset_data"):
             if st.checkbox("Confirm data reset", key="confirm_reset"):
