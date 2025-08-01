@@ -355,22 +355,42 @@ def render_create_rca():
             if 'pareto_items' not in st.session_state:
                 st.session_state.pareto_items = [{"cause": "", "frequency": 1}]
 
+            # Create a container for the Pareto items
+            pareto_container = st.container()
+            
+            # Display existing items
             for i in range(len(st.session_state.pareto_items)):
-                c1, c2, c3 = st.columns([4, 2, 1])
-                with c1:
-                    st.session_state.pareto_items[i]["cause"] = st.text_input("Cause", 
-                        value=st.session_state.pareto_items[i]["cause"], key=f"cause_{i}")
-                with c2:
-                    st.session_state.pareto_items[i]["frequency"] = st.number_input("Frequency", 
-                        value=st.session_state.pareto_items[i]["frequency"], min_value=1, key=f"freq_{i}")
-                with c3:
-                    if st.button("🗑️", key=f"del_{i}"):
-                        st.session_state.pareto_items.pop(i)
+                with pareto_container:
+                    c1, c2, c3 = st.columns([4, 2, 1])
+                    with c1:
+                        st.session_state.pareto_items[i]["cause"] = st.text_input(
+                            "Cause", 
+                            value=st.session_state.pareto_items[i]["cause"], 
+                            key=f"cause_{i}"
+                        )
+                    with c2:
+                        st.session_state.pareto_items[i]["frequency"] = st.number_input(
+                            "Frequency", 
+                            value=st.session_state.pareto_items[i]["frequency"], 
+                            min_value=1, 
+                            key=f"freq_{i}"
+                        )
+                    with c3:
+                        # Placeholder for delete button - we'll handle this outside the form
+                        st.write("")  # Empty space for alignment
+            
+            # Buttons outside the form
+            st.markdown("**Manage Causes:**")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("➕ Add Cause", key="add_cause"):
+                    st.session_state.pareto_items.append({"cause": "", "frequency": 1})
+                    st.rerun()
+            with c2:
+                if st.button("🗑️ Remove Last Cause", key="remove_last_cause"):
+                    if len(st.session_state.pareto_items) > 1:
+                        st.session_state.pareto_items.pop()
                         st.rerun()
-                        break
-
-            if st.button("➕ Add Cause", key="add_cause"):
-                st.session_state.pareto_items.append({"cause": "", "frequency": 1})
             
             technique_details['pareto'] = [item for item in st.session_state.pareto_items if item['cause']]
     
