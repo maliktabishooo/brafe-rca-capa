@@ -261,67 +261,53 @@ def generate_pdf(rca_data, capa_data):
     return pdf.output(dest='S').encode('latin1')
 
 # --- UI RENDERING FUNCTIONS ---
-def render_create_rca():
-    st.title("📝 Create Root Cause Analysis")
-    
-    rca_techniques = {
-        "5 Whys": "A simple, iterative technique to explore the cause-and-effect relationships underlying a problem. Ask 'Why?' repeatedly until the root cause is identified.",
-        "Fishbone Diagram": "Also known as an Ishikawa diagram, it helps visualize potential causes of a problem by grouping them into major categories (e.g., Manpower, Method, Machine, Material, Measurement, Environment).",
-        "Pareto Analysis": "A statistical technique that uses the 80/20 rule to identify the most significant factors from a list of many. It helps prioritize efforts on the 'vital few' causes that have the largest impact."
-    }
+def render_dashboard():
+    st.title("📊 QMS Dashboard")
+    st.markdown("Overview of the Quality Management System status at Brafe Engineering.")
 
-    # Use a unique key for the radio button to reset state when switched
-    record_type = st.radio("Record Type", ["Internal", "Customer"])
-    customer_name = st.text_input("Customer Name", disabled=(record_type == "Internal"))
-    po_number = st.text_input("Purchase Order (PO)")
-    work_order = st.text_input("Work Order")
+    rca_df = pd.DataFrame(st.session_state.rca_records)
+    capa_df = pd.DataFrame(st.session_state.capa_records)
 
-    st.subheader("2. Problem Details")
-    problem_description = st.text_area("Problem Description", height=100, placeholder="Clearly describe the issue, what happened, and where it was observed.")
-    
-    st.subheader("3. Root Cause Analysis Technique")
-    technique = st.selectbox("Select RCA Technique", options=list(rca_techniques.keys()))
-    with st.expander("What is this technique?"):
-        st.info(rca_techniques[technique])
+    if rca_df.empty:
+        st.info("No data available. Create your first RCA record to get started.")
+        return
 
-    # Dynamic form for selected RCA technique - This part is now OUTSIDE the form
-    technique_details = {}
-    if technique == '5 Whys':
-        whys = [st.text_input(f"Why {i+1}?", key=f"why{i}") for i in range(5)]
-        technique_details['whys'] = [w for w in whys if w]
-    
-    elif technique == 'Fishbone Diagram':
-        fishbone_data = {}
-        categories = ['Manpower', 'Method', 'Machine', 'Material', 'Measurement', 'Environment']
-        cols = st.columns(3)
-        for i, cat in enumerate(categories):
-            with cols[i % 3]:
-                fishbone_data[cat] = st.text_area(f"Causes for {cat}", height=100, key=f"fishbone_{cat}").split('\n')
-                fishbone_data[cat] = [c.strip() for c in fishbone_data[cat] if c.strip()]
-        technique_details['fishbone'] = fishbone_data
+    # KPI Metrics
+    c1, c2, c3 = st.columns(3)
+    open_capas = capa_df[capa_df['status'] != 'Closed'] if not capa_df.empty else pd.DataFrame()
+    c1.metric("Total RCA Records", len(rca_df))
+    c2.metric("Total CAPA Records", len(capa_df))
+    c3.metric("Open CAPAs", len(open_capas))
 
-    elif technique == 'Pareto Analysis':
-        st.markdown("Enter defect types and their frequency. The system will generate a Pareto chart.")
-        if 'pareto_items' not in st.session_state:
-            st.session_state.pareto_items = [{"cause": "", "frequency": 1}]
-        
-        pareto_data = []
-        for i in range(len(st.session_state.pareto_items)):
-            c1, c2, c3 = st.columns([4, 2, 1])
-            with c1:
-                st.session_state.pareto_items[i]["cause"] = st.text_input("Cause", value=st.session_state.pareto_items[i]["cause"], key=f"cause_{i}")
-            with c2:
-                st.session_state.pareto_items[i]["frequency"] = st.number_input("Frequency", value=st.session_state.pareto_items[i]["frequency"], min_value=1, key=f"freq_{i}")
-            with c3:
-                # Use a button outside a form to delete
-                if st.button("🗑️", key=f"del_{i}"):
-                    st.session_state.pareto_items.pop(i)
-                    st.rerun()
+    st.divider()
 
-        if st.button("Add Cause", use_container_width=True):
-            st.session_state.pareto_items.append({"cause": "", "frequency": 1})
-            st.rerun()
-        
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("CAPA Status Distribution")
+        if not capa_df.empty:
+            status_counts = capa_df['status'].value_counts()
+            fig = px.pie(status_counts, values=status_counts.values, names=status_counts.index, hole=.3,
+                         color_discrete_map={'Open':'#EF553B', 'In Progress':'#FF97FF', 'Completed':'#00CC96', 'Closed':'#636EFA'})
+            fig.update_layout(showlegend=True, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.text("No CAPA data.")
+
+    with c2:
+        st.subheader("RCA Record Types")
+        type_counts = rca_df['record_type'].value_counts()
+        fig = px.bar(type_counts, x=type_counts.index, y=type_counts.values, labels={'x': 'Record Type', 'y': 'Count'})
+        fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0))
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.divider()
+
+    st.subheader("Recent Activity Log")
+    if not capa_df.empty and not rca_df.empty:
+        merged_df = pd.merge(rca_df, capa_df, left_on='id', right_on='rca_id', how='left', suffixes=('_rca', '_capa'))
+        st.dataframe(merged_df[['id_rca', 'problem_description', 'status', 'due_date']].tail(), use_container_width=True)
+    else:
+        st.dataframe(rca_df[['id', 'problem_description', 'record_type']].tail(), use_container_width=True)
         # This is where we gather the final data
         technique_details['pareto'] = [item for item in st.session_state.pareto_items if item['cause']]
 
