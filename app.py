@@ -12,6 +12,9 @@ from github import Github, InputGitTreeElement, UnknownObjectException
 import plotly.express as px
 import matplotlib.pyplot as plt
 from ast import literal_eval
+import time
+from streamlit_lottie import st_lottie
+import json
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -19,6 +22,11 @@ st.set_page_config(
     page_icon="brafe-logo.png",
     layout="wide"
 )
+
+# --- ANIMATIONS ---
+def load_lottie(filepath: str):
+    with open(filepath, "r") as f:
+        return json.load(f)
 
 # --- INITIALIZE SESSION STATE ---
 def init_session_state():
@@ -29,7 +37,7 @@ def init_session_state():
         'user': 'Default User',
         'data_loaded': False,
         'pareto_items': [{"cause": "", "frequency": 1}],
-        'rca_record_type': "Internal"  # Added for record type persistence
+        'rca_record_type': "Internal"
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -206,13 +214,17 @@ def generate_pdf(rca_data, capa_data):
         pdf.set_y(sig_y_pos)
         pdf.set_x(x_pos)
         pdf.cell(80, 5, label, 0, 2, 'C')
-        if sig_data:
+        
+        # Safely handle signature data
+        if sig_data and isinstance(sig_data, str) and sig_data.startswith('data:image'):
             try:
                 img_bytes = base64.b64decode(sig_data.split(",")[1])
                 img_stream = io.BytesIO(img_bytes)
                 pdf.image(img_stream, x=x_pos + 15, y=sig_y_pos + 8, w=50)
-            except:
+            except Exception:
+                # If signature processing fails, leave blank space
                 pass
+        
         pdf.set_font('Arial', 'I', 9)
         pdf.set_y(sig_y_pos + 35)
         pdf.set_x(x_pos)
@@ -247,6 +259,15 @@ def render_dashboard():
     if rca_df.empty:
         st.info("No data available. Create your first RCA record to get started.")
         return
+
+    # Animation header
+    with st.container():
+        cols = st.columns([1, 3])
+        with cols[0]:
+            st_lottie(load_lottie("animation_dashboard.json"), height=150, key="dashboard_anim")
+        with cols[1]:
+            st.subheader("Quality Management System")
+            st.markdown("Track, analyze, and improve quality processes at Brafe Engineering")
 
     c1, c2, c3 = st.columns(3)
     open_capas = capa_df[capa_df['status'] != 'Closed'] if not capa_df.empty else pd.DataFrame()
@@ -286,6 +307,15 @@ def render_dashboard():
 
 def render_create_rca():
     st.title("📝 Create Root Cause Analysis")
+    
+    # Animation header
+    with st.container():
+        cols = st.columns([1, 3])
+        with cols[0]:
+            st_lottie(load_lottie("animation_rca.json"), height=150, key="rca_anim")
+        with cols[1]:
+            st.subheader("Root Cause Analysis")
+            st.markdown("Identify the fundamental causes of quality issues")
     
     rca_techniques = {
         "5 Whys": "A simple, iterative technique to explore the cause-and-effect relationships underlying a problem.",
@@ -417,12 +447,27 @@ def render_create_rca():
                     rca_record['pareto_chart'] = buf
                     
                 st.session_state.rca_records.append(rca_record)
+                
+                # Success animation
+                with st.spinner("Saving RCA record..."):
+                    time.sleep(1)
                 st.success("RCA record created successfully!")
+                st.balloons()
+                
                 st.session_state.pareto_items = [{"cause": "", "frequency": 1}]  # Reset Pareto
                 st.rerun()
 
 def render_create_capa():
     st.title("🛡️ Create Corrective/Preventive Action (CAPA)")
+
+    # Animation header
+    with st.container():
+        cols = st.columns([1, 3])
+        with cols[0]:
+            st_lottie(load_lottie("animation_capa.json"), height=150, key="capa_anim")
+        with cols[1]:
+            st.subheader("Corrective & Preventive Actions")
+            st.markdown("Implement solutions to address root causes and prevent recurrence")
 
     if not st.session_state.rca_records:
         st.warning("No RCA records found. Please create an RCA first.")
@@ -514,11 +559,25 @@ def render_create_capa():
                     }
                     st.session_state.capa_records.append(capa_record)
                     st.session_state.car_counter += 1
+                    
+                    # Success animation
+                    with st.spinner("Saving CAPA record..."):
+                        time.sleep(1)
                     st.success("CAPA record created successfully!")
+                    st.balloons()
                     st.rerun()
 
 def render_generate_report():
     st.title("📄 Generate CAR Report")
+
+    # Animation header
+    with st.container():
+        cols = st.columns([1, 3])
+        with cols[0]:
+            st_lottie(load_lottie("animation_report.json"), height=150, key="report_anim")
+        with cols[1]:
+            st.subheader("Generate Quality Reports")
+            st.markdown("Create professional PDF reports for your Corrective Action Records")
 
     if not st.session_state.capa_records:
         st.warning("No CAPA records found. Create a CAPA first.")
@@ -542,7 +601,17 @@ def render_generate_report():
         st.subheader(f"Preview for {selected_car_number}")
         if st.button("🚀 Generate PDF Report", use_container_width=True, key="generate_pdf"):
             with st.spinner("Creating your report..."):
+                # Animation while generating
+                with st.empty():
+                    st_lottie(load_lottie("animation_generating.json"), height=150)
+                    time.sleep(2)
+                
                 pdf_bytes = generate_pdf(rca_data, capa_data)
+                
+                # Success animation
+                st.success("Report generated successfully!")
+                st.balloons()
+                
                 st.download_button(
                     label="📥 Download PDF",
                     data=pdf_bytes,
@@ -557,6 +626,15 @@ def render_generate_report():
 def render_settings():
     st.title("⚙️ System Settings")
 
+    # Animation header
+    with st.container():
+        cols = st.columns([1, 3])
+        with cols[0]:
+            st_lottie(load_lottie("animation_settings.json"), height=150, key="settings_anim")
+        with cols[1]:
+            st.subheader("System Configuration")
+            st.markdown("Manage your preferences and system data")
+
     st.subheader("User Preferences")
     username = st.text_input("Your Name (for 'Generated By' field)", value=st.session_state.get('user', ''), key="username")
     if st.button("Save User Preference", key="save_user"):
@@ -569,7 +647,10 @@ def render_settings():
     c1, c2 = st.columns(2)
     with c1:
         if st.button("💾 Save All Data to GitHub", use_container_width=True, key="save_github"):
-            save_data_to_github()
+            with st.spinner("Saving to GitHub..."):
+                save_data_to_github()
+                time.sleep(1)
+            st.success("Data saved successfully!")
 
     with c2:
         if st.button("⚠️ Reset All Local Data", type="primary", use_container_width=True, key="reset_data"):
@@ -595,7 +676,11 @@ def main():
 
     if "GITHUB_TOKEN" in st.secrets and not st.session_state.data_loaded:
         with st.spinner("Loading data from repository..."):
-            load_data_from_github()
+            # Loading animation
+            with st.empty():
+                st_lottie(load_lottie("animation_loading.json"), height=200)
+                load_data_from_github()
+                time.sleep(1)
 
     with st.sidebar:
         st.image("brafe-logo.png")
