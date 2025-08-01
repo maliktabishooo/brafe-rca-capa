@@ -398,25 +398,15 @@ def render_create_rca():
                             key=f"freq_{i}"
                         )
                     with c3:
-                        st.write("")  # Empty space for alignment
+                        st.write("") # Empty space for alignment
             
-            st.markdown("**Manage Causes:**")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("➕ Add Cause", key="add_cause"):
-                    st.session_state.pareto_items.append({"cause": "", "frequency": 1})
-                    st.rerun()
-            with c2:
-                if st.button("🗑️ Remove Last Cause", key="remove_last_cause"):
-                    if len(st.session_state.pareto_items) > 1:
-                        st.session_state.pareto_items.pop()
-                        st.rerun()
-            
+            # The 'Manage Causes' buttons have been moved outside the form
+            # to avoid the StreamlitAPIException.
             technique_details['pareto'] = [item for item in st.session_state.pareto_items if item['cause']]
     
         st.subheader("4. Evidence")
         images = st.file_uploader("Upload Evidence Photos", type=["jpg", "jpeg", "png"], 
-                                  accept_multiple_files=True, key="evidence_photos")
+                                    accept_multiple_files=True, key="evidence_photos")
         
         submitted = st.form_submit_button("✅ Save RCA Record", use_container_width=True)
 
@@ -473,6 +463,20 @@ def render_create_rca():
                 
                 st.session_state.pareto_items = [{"cause": "", "frequency": 1}]
                 st.rerun()
+
+# This is the corrected section. The buttons are outside the form.
+    st.markdown("**Manage Causes:**")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("➕ Add Cause", key="add_cause"):
+            st.session_state.pareto_items.append({"cause": "", "frequency": 1})
+            st.rerun()
+    with c2:
+        if st.button("🗑️ Remove Last Cause", key="remove_last_cause"):
+            if len(st.session_state.pareto_items) > 1:
+                st.session_state.pareto_items.pop()
+                st.rerun()
+
 
 def render_create_capa():
     """Renders the page for creating a new CAPA record."""
@@ -714,4 +718,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
