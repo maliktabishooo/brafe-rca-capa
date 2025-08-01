@@ -23,6 +23,7 @@ st.set_page_config(
 
 # --- INITIALIZE SESSION STATE ---
 def init_session_state():
+    """Initializes session state variables with default values."""
     defaults = {
         'rca_records': [],
         'capa_records': [],
@@ -39,6 +40,7 @@ def init_session_state():
 # --- GITHUB INTEGRATION ---
 @st.cache_resource
 def get_github_repo():
+    """Authenticates with GitHub and returns the repository object."""
     try:
         token = st.secrets["GITHUB_TOKEN"]
         user = st.secrets["GITHUB_USER"]
@@ -54,6 +56,7 @@ def get_github_repo():
         return None
 
 def load_data_from_github():
+    """Loads RCA and CAPA data from CSV files in the GitHub repository."""
     if st.session_state.data_loaded:
         return
     repo = get_github_repo()
@@ -68,6 +71,7 @@ def load_data_from_github():
                 for col in ['technique_details', 'images']:
                     if col in df.columns:
                         try:
+                            # Safely evaluate string representations of lists/dicts
                             df[col] = df[col].apply(literal_eval)
                         except:
                             df[col] = [[] for _ in range(len(df))]
@@ -87,6 +91,7 @@ def load_data_from_github():
     st.session_state.data_loaded = True
 
 def save_data_to_github():
+    """Saves RCA and CAPA dataframes as CSVs to the GitHub repository."""
     repo = get_github_repo()
     if not repo:
         st.error("Cannot save: GitHub repository not connected.")
@@ -116,6 +121,7 @@ def save_data_to_github():
 
 # --- PDF REPORT GENERATOR ---
 class PDF(FPDF):
+    """Custom FPDF class for generating the report with custom header and footer."""
     def header(self):
         self.image('brafe-logo.png', 10, 8, 40)
         self.set_font('Arial', 'B', 15)
@@ -149,6 +155,7 @@ class PDF(FPDF):
         self.ln(2)
 
 def generate_pdf(rca_data, capa_data):
+    """Generates a PDF report from RCA and CAPA data."""
     pdf = PDF()
     pdf.add_page()
 
@@ -186,7 +193,9 @@ def generate_pdf(rca_data, capa_data):
         pdf.multi_cell(0, 5, "Pareto analysis identifies the most significant factors in a set of data.")
         pdf.ln(2)
         if 'pareto_chart' in rca_data:
-            pdf.image(rca_data['pareto_chart'], w=180)
+            # Check if the chart is a BytesIO object before passing to FPDF
+            if isinstance(rca_data['pareto_chart'], io.BytesIO):
+                pdf.image(rca_data['pareto_chart'], w=180)
     pdf.ln(5)
 
     # --- CAPA Details ---
@@ -202,20 +211,25 @@ def generate_pdf(rca_data, capa_data):
     pdf.chapter_title('5. Approvals')
     sig_y_pos = pdf.get_y()
     
+    # Nested function to add signatures to the PDF
     def add_signature(label, sig_data, x_pos):
         pdf.set_font('Arial', 'B', 10)
         pdf.set_y(sig_y_pos)
         pdf.set_x(x_pos)
         pdf.cell(80, 5, label, 0, 2, 'C')
         
-        # Safely handle signature data
+        # FIX: Added a more robust check for base64 data to prevent errors
         if sig_data and isinstance(sig_data, str) and sig_data.startswith('data:image'):
             try:
-                img_bytes = base64.b64decode(sig_data.split(",")[1])
-                img_stream = io.BytesIO(img_bytes)
-                pdf.image(img_stream, x=x_pos + 15, y=sig_y_pos + 8, w=50)
-            except Exception:
-                # If signature processing fails, leave blank space
+                # Split the data and ensure there is a second part (the base64 string)
+                parts = sig_data.split(',')
+                if len(parts) > 1:
+                    img_bytes = base64.b64decode(parts[1])
+                    img_stream = io.BytesIO(img_bytes)
+                    pdf.image(img_stream, x=x_pos + 15, y=sig_y_pos + 8, w=50)
+            except (IndexError, ValueError) as e:
+                # Silently fail if signature data is malformed and continue
+                print(f"Error processing signature image data: {e}")
                 pass
         
         pdf.set_font('Arial', 'I', 9)
@@ -245,6 +259,7 @@ def generate_pdf(rca_data, capa_data):
 
 # --- UI RENDERING FUNCTIONS ---
 def render_dashboard():
+    """Renders the main dashboard page."""
     st.title("📊 QMS Dashboard")
     rca_df = pd.DataFrame(st.session_state.rca_records)
     capa_df = pd.DataFrame(st.session_state.capa_records)
@@ -293,6 +308,7 @@ def render_dashboard():
         st.dataframe(rca_df[['id', 'problem_description', 'record_type']].tail(), use_container_width=True)
 
 def render_create_rca():
+    """Renders the page for creating a new RCA record."""
     st.title("📝 Create Root Cause Analysis")
     st.subheader("Root Cause Analysis")
     st.markdown("Identify the fundamental causes of quality issues")
@@ -308,24 +324,22 @@ def render_create_rca():
         st.subheader("1. General Information")
         c1, c2 = st.columns(2)
         with c1:
-            # Store record type in session state for persistence
             record_type = st.radio("Record Type", ["Internal", "Customer"], 
-                                  index=0 if st.session_state.rca_record_type == "Internal" else 1,
-                                  key="rca_record_type_radio")
+                                   index=0 if st.session_state.rca_record_type == "Internal" else 1,
+                                   key="rca_record_type_radio")
             st.session_state.rca_record_type = record_type
             
-            # Only enable customer name if customer type is selected
             customer_name = st.text_input("Customer Name", 
-                                         disabled=(record_type == "Internal"),
-                                         key="customer_name")
+                                          disabled=(record_type == "Internal"),
+                                          key="customer_name")
         with c2:
             po_number = st.text_input("Purchase Order (PO)", key="po_number")
             work_order = st.text_input("Work Order", key="work_order")
 
         st.subheader("2. Problem Details")
         problem_description = st.text_area("Problem Description", height=100, 
-                                          placeholder="Describe the issue, what happened, and where it was observed.",
-                                          key="problem_description")
+                                           placeholder="Describe the issue, what happened, and where it was observed.",
+                                           key="problem_description")
         
         st.subheader("3. Root Cause Analysis Technique")
         technique = st.selectbox("Select RCA Technique", options=list(rca_techniques.keys()), key="technique")
@@ -355,10 +369,8 @@ def render_create_rca():
             if 'pareto_items' not in st.session_state:
                 st.session_state.pareto_items = [{"cause": "", "frequency": 1}]
 
-            # Create a container for the Pareto items
             pareto_container = st.container()
             
-            # Display existing items
             for i in range(len(st.session_state.pareto_items)):
                 with pareto_container:
                     c1, c2, c3 = st.columns([4, 2, 1])
@@ -376,10 +388,8 @@ def render_create_rca():
                             key=f"freq_{i}"
                         )
                     with c3:
-                        # Placeholder for delete button - we'll handle this outside the form
                         st.write("")  # Empty space for alignment
             
-            # Buttons outside the form
             st.markdown("**Manage Causes:**")
             c1, c2 = st.columns(2)
             with c1:
@@ -396,9 +406,8 @@ def render_create_rca():
     
         st.subheader("4. Evidence")
         images = st.file_uploader("Upload Evidence Photos", type=["jpg", "jpeg", "png"], 
-                                 accept_multiple_files=True, key="evidence_photos")
+                                  accept_multiple_files=True, key="evidence_photos")
         
-        # Form submit button
         submitted = st.form_submit_button("✅ Save RCA Record", use_container_width=True)
 
         if submitted:
@@ -425,7 +434,6 @@ def render_create_rca():
                     "images": image_data
                 }
                 
-                # Pareto chart generation
                 if technique == 'Pareto Analysis' and technique_details.get('pareto'):
                     df = pd.DataFrame(technique_details['pareto']).sort_values('frequency', ascending=False)
                     df['cumulative_percentage'] = (df['frequency'].cumsum() / df['frequency'].sum()) * 100
@@ -448,16 +456,16 @@ def render_create_rca():
                     
                 st.session_state.rca_records.append(rca_record)
                 
-                # Success animation
                 with st.spinner("Saving RCA record..."):
                     time.sleep(1)
                 st.success("RCA record created successfully!")
                 st.balloons()
                 
-                st.session_state.pareto_items = [{"cause": "", "frequency": 1}]  # Reset Pareto
+                st.session_state.pareto_items = [{"cause": "", "frequency": 1}]
                 st.rerun()
 
 def render_create_capa():
+    """Renders the page for creating a new CAPA record."""
     st.title("🛡️ Create Corrective/Preventive Action (CAPA)")
     st.subheader("Corrective & Preventive Actions")
     st.markdown("Implement solutions to address root causes and prevent recurrence")
@@ -469,9 +477,9 @@ def render_create_capa():
     rca_options = {rca['id']: f"{rca['id']} - {rca.get('problem_description', 'N/A')[:50]}..." 
                    for rca in st.session_state.rca_records}
     selected_rca_id = st.selectbox("Select the RCA record to address:", 
-                                  options=list(rca_options.keys()), 
-                                  format_func=lambda x: rca_options[x],
-                                  key="rca_selection")
+                                   options=list(rca_options.keys()), 
+                                   format_func=lambda x: rca_options[x],
+                                   key="rca_selection")
     
     rca_data = next((r for r in st.session_state.rca_records if r['id'] == selected_rca_id), None)
 
@@ -483,17 +491,17 @@ def render_create_capa():
         with st.form("capa_form", clear_on_submit=True):
             st.subheader("1. Action Plan")
             car_number = st.text_input("CAR Number", value=f"CAR-{datetime.now().year}-{st.session_state.car_counter:03d}", 
-                                      disabled=True, key="car_number")
+                                       disabled=True, key="car_number")
             
             c1, c2 = st.columns(2)
             with c1:
                 corrective_action = st.text_area("Corrective Action", height=150, 
-                                               help="Actions to eliminate the cause of the detected non-conformity.",
-                                               key="corrective_action")
+                                                 help="Actions to eliminate the cause of the detected non-conformity.",
+                                                 key="corrective_action")
             with c2:
                 preventive_action = st.text_area("Preventive Action", height=150, 
-                                               help="Actions to prevent recurrence of the non-conformity.",
-                                               key="preventive_action")
+                                                 help="Actions to prevent recurrence of the non-conformity.",
+                                                 key="preventive_action")
 
             st.subheader("2. Assignment and Status")
             c1, c2, c3 = st.columns(3)
@@ -533,7 +541,6 @@ def render_create_capa():
                 if not corrective_action or not preventive_action or not responsible:
                     st.error("Corrective/Preventive Actions and Responsible Person are required!")
                 else:
-                    # Handle signature data safely
                     responsible_sig_data = responsible_sig.image_data if hasattr(responsible_sig, 'image_data') else None
                     approver_sig_data = approver_sig.image_data if hasattr(approver_sig, 'image_data') else None
                     
@@ -553,7 +560,6 @@ def render_create_capa():
                     st.session_state.capa_records.append(capa_record)
                     st.session_state.car_counter += 1
                     
-                    # Success animation
                     with st.spinner("Saving CAPA record..."):
                         time.sleep(1)
                     st.success("CAPA record created successfully!")
@@ -561,6 +567,7 @@ def render_create_capa():
                     st.rerun()
 
 def render_generate_report():
+    """Renders the page for generating a PDF report."""
     st.title("📄 Generate CAR Report")
     st.subheader("Generate Quality Reports")
     st.markdown("Create professional PDF reports for your Corrective Action Records")
@@ -572,9 +579,9 @@ def render_generate_report():
     capa_options = {capa['car_number']: f"{capa['car_number']} - RCA: {capa['rca_id']}" 
                     for capa in st.session_state.capa_records}
     selected_car_number = st.selectbox("Select a CAR to generate a PDF report:", 
-                                      options=list(capa_options.keys()), 
-                                      format_func=lambda x: capa_options[x],
-                                      key="car_selection")
+                                       options=list(capa_options.keys()), 
+                                       format_func=lambda x: capa_options[x],
+                                       key="car_selection")
 
     capa_data = next((c for c in st.session_state.capa_records if c.get('car_number') == selected_car_number), None)
     
@@ -587,7 +594,6 @@ def render_generate_report():
         st.subheader(f"Preview for {selected_car_number}")
         if st.button("🚀 Generate PDF Report", use_container_width=True, key="generate_pdf"):
             with st.spinner("Creating your report..."):
-                # Progress bar animation
                 progress_bar = st.progress(0)
                 for percent in range(0, 101, 10):
                     time.sleep(0.1)
@@ -595,7 +601,6 @@ def render_generate_report():
                 
                 pdf_bytes = generate_pdf(rca_data, capa_data)
                 
-                # Success animation
                 st.success("Report generated successfully!")
                 st.balloons()
                 
@@ -611,6 +616,7 @@ def render_generate_report():
         st.warning("Please select a valid CAR.")
 
 def render_settings():
+    """Renders the settings page."""
     st.title("⚙️ System Settings")
     st.subheader("System Configuration")
     st.markdown("Manage your preferences and system data")
@@ -652,11 +658,11 @@ def render_settings():
 
 # --- MAIN APP LOGIC ---
 def main():
+    """Main function to run the Streamlit app."""
     init_session_state()
 
     if "GITHUB_TOKEN" in st.secrets and not st.session_state.data_loaded:
         with st.spinner("Loading data from repository..."):
-            # Progress bar animation
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -691,7 +697,6 @@ def main():
         "Settings": render_settings
     }
     
-    # Render the selected page
     page_map[selected]()
 
 if __name__ == "__main__":
