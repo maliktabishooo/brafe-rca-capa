@@ -28,7 +28,8 @@ def init_session_state():
         'car_counter': 1,
         'user': 'Default User',
         'data_loaded': False,
-        'pareto_items': [{"cause": "", "frequency": 1}]
+        'pareto_items': [{"cause": "", "frequency": 1}],
+        'rca_record_type': "Internal"  # Added for record type persistence
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -297,18 +298,27 @@ def render_create_rca():
         st.subheader("1. General Information")
         c1, c2 = st.columns(2)
         with c1:
-            record_type = st.radio("Record Type", ["Internal", "Customer"], key="record_type")
-            customer_name = st.text_input("Customer Name", disabled=(record_type == "Internal"))
+            # Store record type in session state for persistence
+            record_type = st.radio("Record Type", ["Internal", "Customer"], 
+                                  index=0 if st.session_state.rca_record_type == "Internal" else 1,
+                                  key="rca_record_type_radio")
+            st.session_state.rca_record_type = record_type
+            
+            # Only enable customer name if customer type is selected
+            customer_name = st.text_input("Customer Name", 
+                                         disabled=(record_type == "Internal"),
+                                         key="customer_name")
         with c2:
-            po_number = st.text_input("Purchase Order (PO)")
-            work_order = st.text_input("Work Order")
+            po_number = st.text_input("Purchase Order (PO)", key="po_number")
+            work_order = st.text_input("Work Order", key="work_order")
 
         st.subheader("2. Problem Details")
         problem_description = st.text_area("Problem Description", height=100, 
-                                          placeholder="Describe the issue, what happened, and where it was observed.")
+                                          placeholder="Describe the issue, what happened, and where it was observed.",
+                                          key="problem_description")
         
         st.subheader("3. Root Cause Analysis Technique")
-        technique = st.selectbox("Select RCA Technique", options=list(rca_techniques.keys()))
+        technique = st.selectbox("Select RCA Technique", options=list(rca_techniques.keys()), key="technique")
         with st.expander("What is this technique?"):
             st.info(rca_techniques[technique])
 
@@ -349,14 +359,14 @@ def render_create_rca():
                         st.rerun()
                         break
 
-            if st.button("➕ Add Cause"):
+            if st.button("➕ Add Cause", key="add_cause"):
                 st.session_state.pareto_items.append({"cause": "", "frequency": 1})
             
             technique_details['pareto'] = [item for item in st.session_state.pareto_items if item['cause']]
     
         st.subheader("4. Evidence")
         images = st.file_uploader("Upload Evidence Photos", type=["jpg", "jpeg", "png"], 
-                                 accept_multiple_files=True)
+                                 accept_multiple_files=True, key="evidence_photos")
         
         # Form submit button
         submitted = st.form_submit_button("✅ Save RCA Record", use_container_width=True)
@@ -422,7 +432,8 @@ def render_create_capa():
                    for rca in st.session_state.rca_records}
     selected_rca_id = st.selectbox("Select the RCA record to address:", 
                                   options=list(rca_options.keys()), 
-                                  format_func=lambda x: rca_options[x])
+                                  format_func=lambda x: rca_options[x],
+                                  key="rca_selection")
     
     rca_data = next((r for r in st.session_state.rca_records if r['id'] == selected_rca_id), None)
 
@@ -433,38 +444,49 @@ def render_create_capa():
         
         with st.form("capa_form", clear_on_submit=True):
             st.subheader("1. Action Plan")
-            car_number = st.text_input("CAR Number", value=f"CAR-{datetime.now().year}-{st.session_state.car_counter:03d}", disabled=True)
+            car_number = st.text_input("CAR Number", value=f"CAR-{datetime.now().year}-{st.session_state.car_counter:03d}", 
+                                      disabled=True, key="car_number")
             
             c1, c2 = st.columns(2)
             with c1:
                 corrective_action = st.text_area("Corrective Action", height=150, 
-                                               help="Actions to eliminate the cause of the detected non-conformity.")
+                                               help="Actions to eliminate the cause of the detected non-conformity.",
+                                               key="corrective_action")
             with c2:
                 preventive_action = st.text_area("Preventive Action", height=150, 
-                                               help="Actions to prevent recurrence of the non-conformity.")
+                                               help="Actions to prevent recurrence of the non-conformity.",
+                                               key="preventive_action")
 
             st.subheader("2. Assignment and Status")
             c1, c2, c3 = st.columns(3)
             with c1:
-                responsible = st.text_input("Responsible Person/Team")
+                responsible = st.text_input("Responsible Person/Team", key="responsible_person")
             with c2:
-                due_date = st.date_input("Due Date")
+                due_date = st.date_input("Due Date", key="due_date")
             with c3:
-                status = st.selectbox("Status", ["Open", "In Progress", "Completed", "Closed"])
+                status = st.selectbox("Status", ["Open", "In Progress", "Completed", "Closed"], key="capa_status")
 
             st.subheader("3. Signatures")
             c1, c2 = st.columns(2)
             with c1:
                 st.write("Responsible Person's Signature")
                 responsible_sig = st_canvas(
-                    fill_color="rgba(255, 165, 0, 0.3)", stroke_width=2, stroke_color="#000000",
-                    background_color="#FFFFFF", height=150, key="responsible_sig_canvas"
+                    fill_color="rgba(255, 165, 0, 0.3)", 
+                    stroke_width=2, 
+                    stroke_color="#000000",
+                    background_color="#FFFFFF", 
+                    height=150, 
+                    key="responsible_sig_canvas"
                 )
             with c2:
                 st.write("QA Approver's Signature")
                 approver_sig = st_canvas(
-                    fill_color="rgba(255, 165, 0, 0.3)", stroke_width=2, stroke_color="#000000",
-                    background_color="#FFFFFF", height=150, key="approver_sig_canvas"
+                    fill_color="rgba(255, 165, 0, 0.3)", 
+                    stroke_width=2, 
+                    stroke_color="#000000",
+                    background_color="#FFFFFF", 
+                    height=150, 
+                    key="approver_sig_canvas"
                 )
 
             submitted = st.form_submit_button("✅ Save CAPA Record", use_container_width=True)
@@ -473,6 +495,10 @@ def render_create_capa():
                 if not corrective_action or not preventive_action or not responsible:
                     st.error("Corrective/Preventive Actions and Responsible Person are required!")
                 else:
+                    # Handle signature data safely
+                    responsible_sig_data = responsible_sig.image_data if hasattr(responsible_sig, 'image_data') else None
+                    approver_sig_data = approver_sig.image_data if hasattr(approver_sig, 'image_data') else None
+                    
                     capa_record = {
                         "id": f"CAPA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                         "rca_id": selected_rca_id,
@@ -482,8 +508,8 @@ def render_create_capa():
                         "responsible": responsible,
                         "due_date": due_date.isoformat(),
                         "status": status,
-                        "responsible_sig": responsible_sig.image_data if responsible_sig.image_data else None,
-                        "approver_sig": approver_sig.image_data if approver_sig.image_data else None,
+                        "responsible_sig": responsible_sig_data,
+                        "approver_sig": approver_sig_data,
                         "created_at": datetime.now().isoformat()
                     }
                     st.session_state.capa_records.append(capa_record)
@@ -502,7 +528,8 @@ def render_generate_report():
                     for capa in st.session_state.capa_records}
     selected_car_number = st.selectbox("Select a CAR to generate a PDF report:", 
                                       options=list(capa_options.keys()), 
-                                      format_func=lambda x: capa_options[x])
+                                      format_func=lambda x: capa_options[x],
+                                      key="car_selection")
 
     capa_data = next((c for c in st.session_state.capa_records if c.get('car_number') == selected_car_number), None)
     
@@ -513,7 +540,7 @@ def render_generate_report():
             return
 
         st.subheader(f"Preview for {selected_car_number}")
-        if st.button("🚀 Generate PDF Report", use_container_width=True):
+        if st.button("🚀 Generate PDF Report", use_container_width=True, key="generate_pdf"):
             with st.spinner("Creating your report..."):
                 pdf_bytes = generate_pdf(rca_data, capa_data)
                 st.download_button(
@@ -521,7 +548,8 @@ def render_generate_report():
                     data=pdf_bytes,
                     file_name=f"{capa_data['car_number']}_report.pdf",
                     mime="application/pdf",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="download_pdf"
                 )
     else:
         st.warning("Please select a valid CAR.")
@@ -530,8 +558,8 @@ def render_settings():
     st.title("⚙️ System Settings")
 
     st.subheader("User Preferences")
-    username = st.text_input("Your Name (for 'Generated By' field)", value=st.session_state.get('user', ''))
-    if st.button("Save User Preference"):
+    username = st.text_input("Your Name (for 'Generated By' field)", value=st.session_state.get('user', ''), key="username")
+    if st.button("Save User Preference", key="save_user"):
         st.session_state.user = username
         st.success("Username updated!")
 
@@ -540,12 +568,12 @@ def render_settings():
     st.subheader("System Data Management")
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("💾 Save All Data to GitHub", use_container_width=True):
+        if st.button("💾 Save All Data to GitHub", use_container_width=True, key="save_github"):
             save_data_to_github()
 
     with c2:
-        if st.button("⚠️ Reset All Local Data", type="primary", use_container_width=True):
-            if st.checkbox("Confirm data reset"):
+        if st.button("⚠️ Reset All Local Data", type="primary", use_container_width=True, key="reset_data"):
+            if st.checkbox("Confirm data reset", key="confirm_reset"):
                 for key in ['rca_records', 'capa_records', 'car_counter', 'data_loaded', 'pareto_items']:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -577,7 +605,8 @@ def main():
             options=["Dashboard", "Create RCA", "Create CAPA", "Generate Report", "Settings"],
             icons=["speedometer2", "journal-plus", "shield-check", "file-earmark-pdf", "gear-wide-connected"],
             menu_icon="cast",
-            default_index=0
+            default_index=0,
+            key="main_menu"
         )
         st.sidebar.divider()
         st.sidebar.info("This QMS application is for internal use at Brafe Engineering.")
