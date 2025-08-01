@@ -43,17 +43,25 @@ def get_github_repo():
 def load_data_from_github():
     """Loads RCA and CAPA data from GitHub repository."""
     repo = get_github_repo()
-    if repo:
+    if not repo:
+        st.warning("GitHub repository not connected. Starting with empty data.")
+        st.session_state.rca_records = []
+        st.session_state.capa_records = []
+        st.session_state.car_counter = 1
+        st.session_state.data_loaded = True
+        return
+    try:
         # Load RCA data
         try:
             contents = repo.get_contents("rca_data.csv")
             rca_data = base64.b64decode(contents.content).decode('utf-8')
             st.session_state.rca_records = pd.read_csv(io.StringIO(rca_data)).to_dict('records')
+            st.write(f"Loaded {len(st.session_state.rca_records)} RCA records.")
         except GithubException as e:
             if e.status == 404:
                 st.warning("'rca_data.csv' not found. Starting fresh.")
             else:
-                st.error(f"Error loading rca_data.csv: {e}")
+                st.error(f"GitHub error loading rca_data.csv: {e}")
             st.session_state.rca_records = []
         except Exception as e:
             st.error(f"Unexpected error loading rca_data.csv: {e}")
@@ -64,6 +72,7 @@ def load_data_from_github():
             contents = repo.get_contents("capa_data.csv")
             capa_data = base64.b64decode(contents.content).decode('utf-8')
             st.session_state.capa_records = pd.read_csv(io.StringIO(capa_data)).to_dict('records')
+            st.write(f"Loaded {len(st.session_state.capa_records)} CAPA records.")
             # Find the highest car_number for the current year
             if st.session_state.capa_records:
                 current_year = datetime.now().year
@@ -78,19 +87,17 @@ def load_data_from_github():
             if e.status == 404:
                 st.warning("'capa_data.csv' not found. Starting fresh.")
             else:
-                st.error(f"Error loading capa_data.csv: {e}")
+                st.error(f"GitHub error loading capa_data.csv: {e}")
             st.session_state.capa_records = []
             st.session_state.car_counter = 1
         except Exception as e:
             st.error(f"Unexpected error loading capa_data.csv: {e}")
             st.session_state.capa_records = []
             st.session_state.car_counter = 1
-    else:
-        st.warning("GitHub repository not connected. Cannot load data.")
-        st.session_state.rca_records = []
-        st.session_state.capa_records = []
-        st.session_state.car_counter = 1
-    st.session_state.data_loaded = True
+    except Exception as e:
+        st.error(f"Unexpected error during data loading: {e}")
+    finally:
+        st.session_state.data_loaded = True
 
 def save_data_to_github():
     """Saves RCA and CAPA dataframes as CSVs to the GitHub repository."""
@@ -122,7 +129,11 @@ def save_data_to_github():
 class PDF(FPDF):
     """Custom FPDF class for generating the report with custom header and footer."""
     def header(self):
-        self.image('brafe-logo.png', 10, 8, 40)
+        try:
+            self.image('brafe-logo.png', 10, 8, 40)
+        except Exception as e:
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, f"Logo not found: {e}", 0, 1, 'L')
         self.set_font('Arial', 'B', 15)
         self.cell(80)
         self.cell(30, 10, 'Corrective Action Report (CAR)', 0, 0, 'C')
@@ -216,7 +227,7 @@ def generate_pdf(rca_data, capa_data):
                         img_stream = io.BytesIO(img_bytes)
                         pdf.image(img_stream, x=x_pos + 15, y=sig_y_pos + 8, w=50)
                 except Exception as e:
-                    print(f"Error processing signature image data for '{label}': {e}")
+                    st.warning(f"Error processing signature for '{label}': {e}")
                     pdf.set_y(sig_y_pos + 15)
                     pdf.set_x(x_pos)
                     pdf.set_font('Arial', 'I', 9)
@@ -249,7 +260,7 @@ def generate_pdf(rca_data, capa_data):
         return pdf.output(dest='S').encode('latin1')
     except Exception as e:
         error_message = f"An unexpected error occurred during PDF generation: {e}"
-        print(error_message)
+        st.error(error_message)
         return {"error": error_message}
 
 # --- UI RENDERING FUNCTIONS ---
@@ -358,10 +369,13 @@ def render_create_rca():
                 st.error("Problem Description is required!")
             else:
                 image_data = []
-                for img in images:
-                    img_bytes = img.getvalue()
-                    img_base64 = base64.b64encode(img_bytes).decode()
-                    image_data.append(f"data:{img.type};base64,{img_base64}")
+                for img in images or []:
+                    try:
+                        img_bytes = img.getvalue()
+                        img_base64 = base64.b64encode(img_bytes).decode()
+                        image_data.append(f"data:{img.type};base64,{img_base64}")
+                    except Exception as e:
+                        st.warning(f"Error processing image: {e}")
                 rca_record = {
                     "id": f"RCA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                     "record_type": record_type,
@@ -376,24 +390,27 @@ def render_create_rca():
                     "images": image_data
                 }
                 if technique == 'Pareto Analysis' and technique_details.get('pareto'):
-                    df = pd.DataFrame(technique_details['pareto']).sort_values('frequency', ascending=False)
-                    df['cumulative_percentage'] = (df['frequency'].cumsum() / df['frequency'].sum()) * 100
-                    fig, ax1 = plt.subplots()
-                    ax1.bar(df['cause'], df['frequency'], color='C0')
-                    ax1.set_ylabel('Frequency', color='C0')
-                    ax1.tick_params(axis='y', labelcolor='C0')
-                    ax1.tick_params(axis='x', rotation=45)
-                    ax2 = ax1.twinx()
-                    ax2.plot(df['cause'], df['cumulative_percentage'], color='C1', marker='o', ms=5)
-                    ax2.set_ylabel('Cumulative Percentage', color='C1')
-                    ax2.tick_params(axis='y', labelcolor='C1')
-                    ax2.set_ylim([0, 110])
-                    plt.title('Pareto Analysis')
-                    fig.tight_layout()
-                    buf = io.BytesIO()
-                    fig.savefig(buf, format='png')
-                    plt.close(fig)
-                    rca_record['pareto_chart'] = buf
+                    try:
+                        df = pd.DataFrame(technique_details['pareto']).sort_values('frequency', ascending=False)
+                        df['cumulative_percentage'] = (df['frequency'].cumsum() / df['frequency'].sum()) * 100
+                        fig, ax1 = plt.subplots()
+                        ax1.bar(df['cause'], df['frequency'], color='C0')
+                        ax1.set_ylabel('Frequency', color='C0')
+                        ax1.tick_params(axis='y', labelcolor='C0')
+                        ax1.tick_params(axis='x', rotation=45)
+                        ax2 = ax1.twinx()
+                        ax2.plot(df['cause'], df['cumulative_percentage'], color='C1', marker='o', ms=5)
+                        ax2.set_ylabel('Cumulative Percentage', color='C1')
+                        ax2.tick_params(axis='y', labelcolor='C1')
+                        ax2.set_ylim([0, 110])
+                        plt.title('Pareto Analysis')
+                        fig.tight_layout()
+                        buf = io.BytesIO()
+                        fig.savefig(buf, format='png')
+                        plt.close(fig)
+                        rca_record['pareto_chart'] = buf
+                    except Exception as e:
+                        st.warning(f"Error generating Pareto chart: {e}")
                 st.session_state.rca_records.append(rca_record)
                 with st.spinner("Saving RCA record..."):
                     time.sleep(1)
@@ -448,4 +465,171 @@ def render_create_capa():
             c1, c2 = st.columns(2)
             with c1:
                 st.write("Responsible Person's Signature")
-                responsible_sig = st_canvas
+                responsible_sig = st_canvas(
+                    fill_color="rgba(255, 165, 0, 0.3)",
+                    stroke_width=2,
+                    stroke_color="#000000",
+                    background_color="#FFFFFF",
+                    height=150,
+                    key="responsible_sig_canvas"
+                )
+            with c2:
+                st.write("QA Approver's Signature")
+                approver_sig = st_canvas(
+                    fill_color="rgba(255, 165, 0, 0.3)",
+                    stroke_width=2,
+                    stroke_color="#000000",
+                    background_color="#FFFFFF",
+                    height=150,
+                    key="approver_sig_canvas"
+                )
+            submitted = st.form_submit_button("✅ Save CAPA Record", use_container_width=True)
+            if submitted:
+                if not corrective_action or not preventive_action or not responsible:
+                    st.error("Corrective/Preventive Actions and Responsible Person are required!")
+                else:
+                    responsible_sig_data = None
+                    approver_sig_data = None
+                    try:
+                        if responsible_sig.image_data is not None:
+                            responsible_sig_data = f"data:image/png;base64,{base64.b64encode(responsible_sig.image_data).decode()}"
+                        if approver_sig.image_data is not None:
+                            approver_sig_data = f"data:image/png;base64,{base64.b64encode(approver_sig.image_data).decode()}"
+                    except Exception as e:
+                        st.warning(f"Error processing signatures: {e}")
+                    capa_record = {
+                        "id": f"CAPA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+                        "rca_id": selected_rca_id,
+                        "car_number": car_number,
+                        "corrective_action": corrective_action,
+                        "preventive_action": preventive_action,
+                        "responsible": responsible,
+                        "due_date": due_date.isoformat(),
+                        "status": status,
+                        "responsible_sig": responsible_sig_data,
+                        "approver_sig": approver_sig_data,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    st.session_state.capa_records.append(capa_record)
+                    st.session_state.car_counter += 1
+                    with st.spinner("Saving CAPA record..."):
+                        time.sleep(1)
+                    st.success("CAPA record created successfully!")
+                    st.balloons()
+                    st.rerun()
+
+def render_generate_report():
+    """Renders the page for generating a PDF report."""
+    st.title("📄 Generate CAR Report")
+    st.subheader("Generate Quality Reports")
+    st.markdown("Create professional PDF reports for your Corrective Action Records")
+    if not st.session_state.capa_records:
+        st.warning("No CAPA records found. Create a CAPA first.")
+        return
+    capa_options = {capa['car_number']: f"{capa['car_number']} - RCA: {capa['rca_id']}" for capa in st.session_state.capa_records}
+    selected_car_number = st.selectbox("Select a CAR to generate a PDF report:", options=list(capa_options.keys()), format_func=lambda x: capa_options[x], key="car_selection")
+    capa_data = next((c for c in st.session_state.capa_records if c.get('car_number') == selected_car_number), None)
+    if capa_data:
+        rca_data = next((r for r in st.session_state.rca_records if r['id'] == capa_data['rca_id']), None)
+        if not rca_data:
+            st.error("Linked RCA record not found! Cannot generate report.")
+            return
+        st.subheader(f"Preview for {selected_car_number}")
+        if st.button("🚀 Generate PDF Report", use_container_width=True, key="generate_pdf"):
+            with st.spinner("Creating your report..."):
+                progress_bar = st.progress(0)
+                for percent in range(0, 101, 10):
+                    time.sleep(0.1)
+                    progress_bar.progress(percent)
+                pdf_output = generate_pdf(rca_data, capa_data)
+                if isinstance(pdf_output, dict) and "error" in pdf_output:
+                    st.error(f"Failed to generate report: {pdf_output['error']}")
+                else:
+                    st.success("Report generated successfully!")
+                    st.balloons()
+                    st.download_button(
+                        label="📥 Download PDF",
+                        data=pdf_output,
+                        file_name=f"{capa_data['car_number']}_report.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="download_pdf"
+                    )
+    else:
+        st.warning("Please select a valid CAR.")
+
+def render_settings():
+    """Renders the settings page."""
+    st.title("⚙️ System Settings")
+    st.subheader("System Configuration")
+    st.markdown("Manage your preferences and system data")
+    st.subheader("User Preferences")
+    username = st.text_input("Your Name (for 'Generated By' field)", value=st.session_state.get('user', ''), key="username")
+    if st.button("Save User Preference", key="save_user"):
+        st.session_state.user = username
+        st.success("Username updated!")
+    st.divider()
+    st.subheader("System Data Management")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾 Save All Data to GitHub", use_container_width=True, key="save_github"):
+            with st.spinner("Saving to GitHub..."):
+                if save_data_to_github():
+                    time.sleep(1)
+                    st.success("Data saved successfully!")
+    with c2:
+        if st.button("⚠️ Reset All Local Data", type="primary", use_container_width=True, key="reset_data"):
+            if st.checkbox("Confirm data reset", key="confirm_reset"):
+                for key in ['rca_records', 'capa_records', 'car_counter', 'data_loaded', 'pareto_items']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                init_session_state()
+                st.success("All local session data has been reset!")
+                st.rerun()
+    st.info(f"""
+        **Current Session Info:**
+        - **RCA Records:** {len(st.session_state.rca_records)}
+        - **CAPA Records:** {len(st.session_state.capa_records)}
+        - **Next CAR Number:** CAR-{datetime.now().year}-{st.session_state.car_counter:03d}
+        - **GitHub Connection:** {'Active' if get_github_repo() else 'Inactive'}
+    """)
+
+# --- MAIN APP LOGIC ---
+def main():
+    """Main function to run the Streamlit app."""
+    init_session_state()
+    if "GITHUB_TOKEN" in st.secrets and not st.session_state.data_loaded:
+        with st.spinner("Loading data from repository..."):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            for i in range(1, 11):
+                progress_bar.progress(i * 10)
+                status_text.text(f"Loading data... {i * 10}%")
+                time.sleep(0.1)
+            load_data_from_github()
+            progress_bar.empty()
+            status_text.empty()
+    with st.sidebar:
+        st.image("brafe-logo.png")
+        st.markdown(f"Welcome, **{st.session_state.user}**")
+        selected = option_menu(
+            menu_title="Main Menu",
+            options=["Dashboard", "Create RCA", "Create CAPA", "Generate Report", "Settings"],
+            icons=["speedometer2", "journal-plus", "shield-check", "file-earmark-pdf", "gear-wide-connected"],
+            menu_icon="cast",
+            default_index=0,
+            key="main_menu"
+        )
+        st.sidebar.divider()
+        st.sidebar.info("This QMS application is for internal use at Brafe Engineering.")
+    page_map = {
+        "Dashboard": render_dashboard,
+        "Create RCA": render_create_rca,
+        "Create CAPA": render_create_capa,
+        "Generate Report": render_generate_report,
+        "Settings": render_settings
+    }
+    page_map[selected]()
+
+if __name__ == "__main__":
+    main()
