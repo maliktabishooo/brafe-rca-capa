@@ -7,8 +7,7 @@ import time
 from datetime import datetime
 from github import Github, InputGitTreeElement, GithubException
 from docx import Document
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches
 from streamlit_option_menu import option_menu
 import matplotlib.pyplot as plt
 from streamlit_drawable_canvas import st_canvas
@@ -126,7 +125,7 @@ def generate_docx(rca_data, capa_data):
     try:
         doc = Document()
         # Header
-        doc.add_heading('Corrective Action Report (CAR)', 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_heading('Corrective Action Report (CAR)', 0)
         # Section 1: Report Details
         doc.add_heading('1. Report Details', level=1)
         doc.add_paragraph(f"CAR Number: {capa_data.get('car_number', 'N/A')}")
@@ -169,8 +168,8 @@ def generate_docx(rca_data, capa_data):
         doc.add_paragraph()
         # Section 5: Approvals
         doc.add_heading('5. Approvals', level=1)
-        doc.add_paragraph(f"Responsible Person: [Signed by {capa_data.get('responsible', 'N/A')}]")
-        doc.add_paragraph(f"QA Approval: [Signed by QA Approver]")
+        doc.add_paragraph(f"Responsible Person: {capa_data.get('responsible_sig', '[Signed by Responsible Person]')}")
+        doc.add_paragraph(f"QA Approval: {capa_data.get('approver_sig', '[Signed by QA Approver]')}")
         doc.add_paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d')}")
         doc.add_paragraph()
         # Section 6: Evidence Photos
@@ -412,9 +411,8 @@ def render_create_capa():
                 if not corrective_action or not preventive_action or not responsible:
                     st.error("Corrective/Preventive Actions and Responsible Person are required!")
                 else:
-                    # Store signatures as placeholders or None, as they are handled as text in DOCX
-                    responsible_sig_data = "[Signed by Responsible Person]" if hasattr(responsible_sig, 'image_data') and responsible_sig.image_data is not None else None
-                    approver_sig_data = "[Signed by QA Approver]" if hasattr(approver_sig, 'image_data') and approver_sig.image_data is not None else None
+                    responsible_sig_data = "[Signed by Responsible Person]" if hasattr(responsible_sig, 'image_data') and responsible_sig.image_data is not None else "[No Signature]"
+                    approver_sig_data = "[Signed by QA Approver]" if hasattr(approver_sig, 'image_data') and approver_sig.image_data is not None else "[No Signature]"
                     capa_record = {
                         "id": f"CAPA-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                         "rca_id": selected_rca_id,
