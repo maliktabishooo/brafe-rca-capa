@@ -13,8 +13,6 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 from ast import literal_eval
 import time
-from streamlit_lottie import st_lottie
-import json
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -22,11 +20,6 @@ st.set_page_config(
     page_icon="brafe-logo.png",
     layout="wide"
 )
-
-# --- ANIMATIONS ---
-def load_lottie(filepath: str):
-    with open(filepath, "r") as f:
-        return json.load(f)
 
 # --- INITIALIZE SESSION STATE ---
 def init_session_state():
@@ -260,11 +253,10 @@ def render_dashboard():
         st.info("No data available. Create your first RCA record to get started.")
         return
 
-    # Animation header
     with st.container():
         cols = st.columns([1, 3])
         with cols[0]:
-            st_lottie(load_lottie("animation_dashboard.json"), height=150, key="dashboard_anim")
+            st.image("dashboard_icon.png", width=100)
         with cols[1]:
             st.subheader("Quality Management System")
             st.markdown("Track, analyze, and improve quality processes at Brafe Engineering")
@@ -308,11 +300,10 @@ def render_dashboard():
 def render_create_rca():
     st.title("📝 Create Root Cause Analysis")
     
-    # Animation header
     with st.container():
         cols = st.columns([1, 3])
         with cols[0]:
-            st_lottie(load_lottie("animation_rca.json"), height=150, key="rca_anim")
+            st.image("rca_icon.png", width=100)
         with cols[1]:
             st.subheader("Root Cause Analysis")
             st.markdown("Identify the fundamental causes of quality issues")
@@ -460,11 +451,10 @@ def render_create_rca():
 def render_create_capa():
     st.title("🛡️ Create Corrective/Preventive Action (CAPA)")
 
-    # Animation header
     with st.container():
         cols = st.columns([1, 3])
         with cols[0]:
-            st_lottie(load_lottie("animation_capa.json"), height=150, key="capa_anim")
+            st.image("capa_icon.png", width=100)
         with cols[1]:
             st.subheader("Corrective & Preventive Actions")
             st.markdown("Implement solutions to address root causes and prevent recurrence")
@@ -570,11 +560,10 @@ def render_create_capa():
 def render_generate_report():
     st.title("📄 Generate CAR Report")
 
-    # Animation header
     with st.container():
         cols = st.columns([1, 3])
         with cols[0]:
-            st_lottie(load_lottie("animation_report.json"), height=150, key="report_anim")
+            st.image("report_icon.png", width=100)
         with cols[1]:
             st.subheader("Generate Quality Reports")
             st.markdown("Create professional PDF reports for your Corrective Action Records")
@@ -601,10 +590,11 @@ def render_generate_report():
         st.subheader(f"Preview for {selected_car_number}")
         if st.button("🚀 Generate PDF Report", use_container_width=True, key="generate_pdf"):
             with st.spinner("Creating your report..."):
-                # Animation while generating
-                with st.empty():
-                    st_lottie(load_lottie("animation_generating.json"), height=150)
-                    time.sleep(2)
+                # Loading animation
+                progress_bar = st.progress(0)
+                for percent_complete in range(0, 101, 10):
+                    time.sleep(0.1)
+                    progress_bar.progress(percent_complete)
                 
                 pdf_bytes = generate_pdf(rca_data, capa_data)
                 
@@ -626,11 +616,10 @@ def render_generate_report():
 def render_settings():
     st.title("⚙️ System Settings")
 
-    # Animation header
     with st.container():
         cols = st.columns([1, 3])
         with cols[0]:
-            st_lottie(load_lottie("animation_settings.json"), height=150, key="settings_anim")
+            st.image("settings_icon.png", width=100)
         with cols[1]:
             st.subheader("System Configuration")
             st.markdown("Manage your preferences and system data")
@@ -677,10 +666,17 @@ def main():
     if "GITHUB_TOKEN" in st.secrets and not st.session_state.data_loaded:
         with st.spinner("Loading data from repository..."):
             # Loading animation
-            with st.empty():
-                st_lottie(load_lottie("animation_loading.json"), height=200)
-                load_data_from_github()
-                time.sleep(1)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i in range(1, 11):
+                progress_bar.progress(i * 10)
+                status_text.text(f"Loading data... {i * 10}%")
+                time.sleep(0.1)
+                
+            load_data_from_github()
+            progress_bar.empty()
+            status_text.empty()
 
     with st.sidebar:
         st.image("brafe-logo.png")
